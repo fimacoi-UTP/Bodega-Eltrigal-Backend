@@ -159,6 +159,7 @@ public class ProductoService {
                 .stockMinimo(producto.getStockMinimo())
                 .unidadMedida(producto.getUnidadMedida())
                 .imagen(producto.getImagen())
+                .color(producto.getColor())
                 .visibleWeb(producto.getVisibleWeb())
                 .activo(producto.getActivo())
                 .categoriaId(producto.getCategoria() != null ? producto.getCategoria().getId() : null)

@@ -65,6 +65,9 @@ public class Producto {
     @Column(name = "imagen", length = 255)
     private String imagen;
 
+    @Column(name = "color", length = 20)
+    private String color;
+
     @Column(name = "visible_web", nullable = false)
     private Boolean visibleWeb = true;
 
