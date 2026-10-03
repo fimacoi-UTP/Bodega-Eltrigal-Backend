@@ -21,6 +21,9 @@ public class PedidoResponse {
     private Long id;
     private String numeroPedido;
     private Long idUsuario;
+    private String clienteNombre;
+    private String clienteTelefono;
+    private String clienteCorreo;
     private String estado;
     private String tipoEntrega;
     private String direccionEntrega;
