@@ -3,7 +3,6 @@ package com.eltrigal.backend.dto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
-import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,8 +20,13 @@ import java.util.List;
 @Builder
 public class PedidoRequest {
 
-    @NotNull(message = "El id de usuario es obligatorio")
     private Long idUsuario;
+
+    private String clienteNombre;
+
+    private String clienteTelefono;
+
+    private String clienteCorreo;
 
     @NotBlank(message = "El tipo de entrega es obligatorio")
     private String tipoEntrega;

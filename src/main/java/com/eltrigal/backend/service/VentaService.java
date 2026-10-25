@@ -7,6 +7,7 @@ import com.eltrigal.backend.dto.VentaResponse;
 import com.eltrigal.backend.entity.DetalleVenta;
 import com.eltrigal.backend.entity.MovimientoInventario;
 import com.eltrigal.backend.entity.Producto;
+import com.eltrigal.backend.entity.Promocion;
 import com.eltrigal.backend.entity.Venta;
 import com.eltrigal.backend.exception.BadRequestException;
 import com.eltrigal.backend.exception.ResourceNotFoundException;
@@ -41,6 +42,7 @@ public class VentaService {
     private final VentaRepository ventaRepository;
     private final ProductoRepository productoRepository;
     private final MovimientoInventarioRepository movimientoInventarioRepository;
+    private final PromocionService promocionService;
 
     /**
      * Registra una nueva venta de forma atómica:
@@ -95,6 +97,8 @@ public class VentaService {
         venta.setReferenciaPago(req.getReferenciaPago());
         venta.setAnulada(false);
 
+        List<Promocion> vigentes = promocionService.obtenerVigentes();
+
         BigDecimal total = BigDecimal.ZERO;
         List<DetalleVenta> detalles = new ArrayList<>();
         List<MovimientoInventario> movimientos = new ArrayList<>();
@@ -102,7 +106,8 @@ public class VentaService {
         for (ItemVentaRequest item : req.getItems()) {
             Producto producto = productosMap.get(item.getProductoId());
 
-            BigDecimal precioUnitario = producto.getPrecio().setScale(2, RoundingMode.HALF_UP);
+            BigDecimal precioOriginal = producto.getPrecio().setScale(2, RoundingMode.HALF_UP);
+            BigDecimal precioUnitario = promocionService.calcularPrecioFinal(producto, vigentes);
             BigDecimal subtotalLinea = precioUnitario.multiply(BigDecimal.valueOf(item.getCantidad())).setScale(2, RoundingMode.HALF_UP);
             total = total.add(subtotalLinea);
 
@@ -116,7 +121,7 @@ public class VentaService {
             detalle.setProducto(producto);
             detalle.setCantidad(item.getCantidad());
             detalle.setPrecioUnitario(precioUnitario);
-            detalle.setPrecioOriginal(precioUnitario);
+            detalle.setPrecioOriginal(precioOriginal);
             detalle.setSubtotal(subtotalLinea);
             detalles.add(detalle);
 

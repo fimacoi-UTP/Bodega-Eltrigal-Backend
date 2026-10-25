@@ -46,6 +46,8 @@ public class ProductoRequest {
 
     private String imagen;
 
+    private String color;
+
     private Boolean visibleWeb;
 
 }

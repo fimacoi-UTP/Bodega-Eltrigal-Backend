@@ -26,6 +26,7 @@ public class ProductoResponse {
     private Integer stockMinimo;
     private String unidadMedida;
     private String imagen;
+    private String color;
     private Boolean visibleWeb;
     private Boolean activo;
 

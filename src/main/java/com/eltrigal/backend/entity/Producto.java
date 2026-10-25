@@ -47,7 +47,7 @@ public class Producto {
     @Column(name = "codigo_barras", length = 13, unique = true)
     private String codigoBarras;
 
-    @Column(name = "descripcion", length = 255)
+    @Column(name = "descripcion", columnDefinition = "TEXT")
     private String descripcion;
 
     @Column(name = "precio", precision = 10, scale = 2, nullable = false)
@@ -64,6 +64,9 @@ public class Producto {
 
     @Column(name = "imagen", length = 255)
     private String imagen;
+
+    @Column(name = "color", length = 20)
+    private String color;
 
     @Column(name = "visible_web", nullable = false)
     private Boolean visibleWeb = true;

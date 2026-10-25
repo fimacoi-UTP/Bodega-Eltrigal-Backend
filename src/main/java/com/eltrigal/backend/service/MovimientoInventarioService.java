@@ -16,7 +16,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Servicio que gestiona la lógica de negocio de los movimientos de inventario y Kardex.
+ * Servicio que gestiona la lógica de negocio de los movimientos de inventario y
+ * Kardex.
  */
 @Service
 @RequiredArgsConstructor
@@ -28,7 +29,8 @@ public class MovimientoInventarioService {
     private final ProductoRepository productoRepository;
 
     /**
-     * Registra un ajuste de inventario manual o merma, validando tipo de operación y suficiencia de stock.
+     * Registra un ajuste de inventario manual o merma, validando tipo de operación
+     * y suficiencia de stock.
      *
      * @param req Datos del ajuste a registrar
      * @return DTO MovimientoResponse con el movimiento generado
@@ -39,12 +41,14 @@ public class MovimientoInventarioService {
 
         // 1. Validar tipo permitido
         if (!TIPOS_AJUSTE_VALIDOS.contains(tipoNormalizado)) {
-            throw new BadRequestException("Tipo de movimiento no válido: '" + req.getTipo() + "'. Tipos permitidos: " + TIPOS_AJUSTE_VALIDOS);
+            throw new BadRequestException(
+                    "Tipo de movimiento no válido: '" + req.getTipo() + "'. Tipos permitidos: " + TIPOS_AJUSTE_VALIDOS);
         }
 
         // 2. Cargar el producto (404 si no existe)
         Producto producto = productoRepository.findById(req.getProductoId())
-                .orElseThrow(() -> new ResourceNotFoundException("Producto no encontrado con ID: " + req.getProductoId()));
+                .orElseThrow(
+                        () -> new ResourceNotFoundException("Producto no encontrado con ID: " + req.getProductoId()));
 
         int stockAnterior = producto.getStock() != null ? producto.getStock() : 0;
         int stockNuevo;
@@ -82,7 +86,8 @@ public class MovimientoInventarioService {
     }
 
     /**
-     * Consulta el historial de movimientos (Kardex) de un producto ordenado descendentemente por fecha.
+     * Consulta el historial de movimientos (Kardex) de un producto ordenado
+     * descendentemente por fecha.
      *
      * @param productoId Identificador del producto
      * @return Lista de MovimientoResponse

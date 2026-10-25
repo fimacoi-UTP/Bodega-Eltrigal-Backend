@@ -9,12 +9,15 @@ import com.eltrigal.backend.entity.DetallePedido;
 import com.eltrigal.backend.entity.HistorialEstadoPedido;
 import com.eltrigal.backend.entity.MovimientoInventario;
 import com.eltrigal.backend.entity.Producto;
+import com.eltrigal.backend.entity.Promocion;
 import com.eltrigal.backend.entity.Pedido;
+import com.eltrigal.backend.entity.Usuario;
 import com.eltrigal.backend.exception.BadRequestException;
 import com.eltrigal.backend.exception.ResourceNotFoundException;
 import com.eltrigal.backend.repository.MovimientoInventarioRepository;
 import com.eltrigal.backend.repository.PedidoRepository;
 import com.eltrigal.backend.repository.ProductoRepository;
+import com.eltrigal.backend.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,22 +28,24 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
- * Servicio que contiene la lógica de negocio y máquina de estados (State Pattern) para la gestión de pedidos.
+ * Servicio que contiene la lógica de negocio y máquina de estados (State
+ * Pattern) para la gestión de pedidos.
  */
 @Service
 @RequiredArgsConstructor
 public class PedidoService {
 
     private static final Map<String, Set<String>> TRANSICIONES = Map.of(
-            "PENDIENTE",  Set.of("CONFIRMADO", "CANCELADO"),
-            "CONFIRMADO", Set.of("EN_CAMINO", "CANCELADO"),
-            "EN_CAMINO",  Set.of("ENTREGADO"),
-            "ENTREGADO",  Set.of(),
-            "CANCELADO",  Set.of()
-    );
+            "PENDIENTE", Set.of("CONFIRMADO", "CANCELADO"),
+            "CONFIRMADO", Set.of("EN_PREPARACION", "EN_CAMINO", "ENTREGADO", "CANCELADO"),
+            "EN_PREPARACION", Set.of("EN_CAMINO", "ENTREGADO", "CANCELADO"),
+            "EN_CAMINO", Set.of("ENTREGADO", "CANCELADO"),
+            "ENTREGADO", Set.of(),
+            "CANCELADO", Set.of());
 
     private static final Set<String> TIPOS_ENTREGA = Set.of("RECOJO_TIENDA", "DELIVERY");
     private static final Set<String> METODOS_PAGO = Set.of("EFECTIVO", "YAPE", "PLIN", "TARJETA");
@@ -48,9 +53,12 @@ public class PedidoService {
     private final PedidoRepository pedidoRepository;
     private final ProductoRepository productoRepository;
     private final MovimientoInventarioRepository movimientoInventarioRepository;
+    private final UsuarioRepository usuarioRepository;
+    private final PromocionService promocionService;
 
     /**
-     * Registra un nuevo pedido reservando stock y creando detalle e historial inicial en una sola transacción.
+     * Registra un nuevo pedido reservando stock y creando detalle e historial
+     * inicial en una sola transacción.
      *
      * @param req Datos del pedido
      * @return DTO PedidoResponse
@@ -61,11 +69,13 @@ public class PedidoService {
         String metodoPagoNorm = req.getMetodoPago() != null ? req.getMetodoPago().trim().toUpperCase() : "";
 
         if (!TIPOS_ENTREGA.contains(tipoEntregaNorm)) {
-            throw new BadRequestException("Tipo de entrega no válido: '" + req.getTipoEntrega() + "'. Tipos permitidos: " + TIPOS_ENTREGA);
+            throw new BadRequestException(
+                    "Tipo de entrega no válido: '" + req.getTipoEntrega() + "'. Tipos permitidos: " + TIPOS_ENTREGA);
         }
 
         if (!METODOS_PAGO.contains(metodoPagoNorm)) {
-            throw new BadRequestException("Método de pago no válido: '" + req.getMetodoPago() + "'. Métodos permitidos: " + METODOS_PAGO);
+            throw new BadRequestException(
+                    "Método de pago no válido: '" + req.getMetodoPago() + "'. Métodos permitidos: " + METODOS_PAGO);
         }
 
         // ==========================================
@@ -86,7 +96,8 @@ public class PedidoService {
 
             int stockDisponible = producto.getStock() != null ? producto.getStock() : 0;
             if (stockDisponible < cantidadSolicitada) {
-                throw new BadRequestException("Stock insuficiente de " + producto.getNombre() + ": disponible " + stockDisponible + ", solicitado " + cantidadSolicitada);
+                throw new BadRequestException("Stock insuficiente de " + producto.getNombre() + ": disponible "
+                        + stockDisponible + ", solicitado " + cantidadSolicitada);
             }
 
             productosMap.put(productoId, producto);
@@ -97,12 +108,17 @@ public class PedidoService {
         // ==========================================
         Pedido pedido = new Pedido();
         pedido.setIdUsuario(req.getIdUsuario());
+        pedido.setClienteNombre(req.getClienteNombre() != null ? req.getClienteNombre().trim() : null);
+        pedido.setClienteTelefono(req.getClienteTelefono() != null ? req.getClienteTelefono().trim() : null);
+        pedido.setClienteCorreo(req.getClienteCorreo() != null ? req.getClienteCorreo().trim().toLowerCase() : null);
         pedido.setNumeroPedido("PED-" + System.currentTimeMillis());
         pedido.setEstado("PENDIENTE");
         pedido.setTipoEntrega(tipoEntregaNorm);
         pedido.setDireccionEntrega(req.getDireccionEntrega());
         pedido.setMetodoPago(metodoPagoNorm);
         pedido.setReferenciaPago(req.getReferenciaPago());
+
+        List<Promocion> vigentes = promocionService.obtenerVigentes();
 
         BigDecimal subtotal = BigDecimal.ZERO;
         List<DetallePedido> detalles = new ArrayList<>();
@@ -111,8 +127,10 @@ public class PedidoService {
         for (ItemPedidoRequest item : req.getItems()) {
             Producto producto = productosMap.get(item.getProductoId());
 
-            BigDecimal precioUnitario = producto.getPrecio().setScale(2, RoundingMode.HALF_UP);
-            BigDecimal subtotalLinea = precioUnitario.multiply(BigDecimal.valueOf(item.getCantidad())).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal precioOriginal = producto.getPrecio().setScale(2, RoundingMode.HALF_UP);
+            BigDecimal precioUnitario = promocionService.calcularPrecioFinal(producto, vigentes);
+            BigDecimal subtotalLinea = precioUnitario.multiply(BigDecimal.valueOf(item.getCantidad())).setScale(2,
+                    RoundingMode.HALF_UP);
             subtotal = subtotal.add(subtotalLinea);
 
             int stockAnterior = producto.getStock();
@@ -125,7 +143,7 @@ public class PedidoService {
             detalle.setProducto(producto);
             detalle.setCantidad(item.getCantidad());
             detalle.setPrecioUnitario(precioUnitario);
-            detalle.setPrecioOriginal(precioUnitario);
+            detalle.setPrecioOriginal(precioOriginal);
             detalle.setSubtotal(subtotalLinea);
             detalles.add(detalle);
 
@@ -141,7 +159,8 @@ public class PedidoService {
         }
 
         subtotal = subtotal.setScale(2, RoundingMode.HALF_UP);
-        BigDecimal costoEnvio = req.getCostoEnvio() != null ? req.getCostoEnvio().setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal costoEnvio = req.getCostoEnvio() != null ? req.getCostoEnvio().setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         BigDecimal total = subtotal.add(costoEnvio).setScale(2, RoundingMode.HALF_UP);
 
         pedido.setSubtotal(subtotal);
@@ -169,7 +188,8 @@ public class PedidoService {
     }
 
     /**
-     * Aplica el cambio de estado de un pedido según la máquina de estados configurada.
+     * Aplica el cambio de estado de un pedido según la máquina de estados
+     * configurada.
      * En caso de transición a CANCELADO, repone el inventario de todos los ítems.
      *
      * @param id          Identificador del pedido
@@ -184,7 +204,8 @@ public class PedidoService {
         String nuevoEstadoNorm = nuevoEstado != null ? nuevoEstado.trim().toUpperCase() : "";
 
         if (!TRANSICIONES.containsKey(nuevoEstadoNorm)) {
-            throw new BadRequestException("Estado de pedido no válido: '" + nuevoEstado + "'. Estados válidos: " + TRANSICIONES.keySet());
+            throw new BadRequestException(
+                    "Estado de pedido no válido: '" + nuevoEstado + "'. Estados válidos: " + TRANSICIONES.keySet());
         }
 
         String estadoActual = pedido.getEstado();
@@ -262,35 +283,95 @@ public class PedidoService {
     }
 
     /**
+     * Lista los pedidos del cliente autenticado resuelto por su email.
+     *
+     * @param email Correo electrónico del usuario
+     * @return Lista de PedidoResponse
+     */
+    @Transactional(readOnly = true)
+    public List<PedidoResponse> listarMisPedidos(String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con email: " + email));
+        return pedidoRepository.findByIdUsuarioOrderByIdDesc(usuario.getId())
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    /**
+     * Obtiene el detalle de un pedido por su número de pedido público.
+     *
+     * @param numeroPedido Código único del pedido (ej. PED-...)
+     * @return DTO PedidoResponse
+     */
+    @Transactional(readOnly = true)
+    public PedidoResponse obtenerPorNumeroPedido(String numeroPedido) {
+        Pedido pedido = pedidoRepository.findByNumeroPedido(numeroPedido)
+                .orElseThrow(() -> new ResourceNotFoundException("Pedido no encontrado con número: " + numeroPedido));
+        return toResponse(pedido);
+    }
+
+    /**
      * Mapea una entidad Pedido a su DTO PedidoResponse.
      *
      * @param pedido Entidad JPA
      * @return DTO PedidoResponse
      */
     private PedidoResponse toResponse(Pedido pedido) {
+        String clienteNombre = pedido.getClienteNombre();
+        String clienteTelefono = pedido.getClienteTelefono();
+        String clienteCorreo = pedido.getClienteCorreo();
+
+        if (pedido.getIdUsuario() != null) {
+            boolean faltaNombre = clienteNombre == null || clienteNombre.isBlank();
+            boolean faltaTelefono = clienteTelefono == null || clienteTelefono.isBlank();
+            boolean faltaCorreo = clienteCorreo == null || clienteCorreo.isBlank();
+
+            if (faltaNombre || faltaTelefono || faltaCorreo) {
+                Optional<Usuario> usuarioOpt = usuarioRepository.findById(pedido.getIdUsuario());
+                if (usuarioOpt.isPresent()) {
+                    Usuario usuario = usuarioOpt.get();
+                    if (faltaNombre) {
+                        String nombres = usuario.getNombres() != null ? usuario.getNombres() : "";
+                        String apellidos = usuario.getApellidos() != null ? usuario.getApellidos() : "";
+                        clienteNombre = (nombres + " " + apellidos).trim();
+                    }
+                    if (faltaTelefono) {
+                        clienteTelefono = usuario.getTelefono();
+                    }
+                    if (faltaCorreo) {
+                        clienteCorreo = usuario.getEmail();
+                    }
+                }
+            }
+        }
+
         List<DetallePedidoResponse> items = pedido.getDetalles() != null
                 ? pedido.getDetalles().stream().map(d -> DetallePedidoResponse.builder()
-                .id(d.getId())
-                .productoId(d.getProducto() != null ? d.getProducto().getId() : null)
-                .productoNombre(d.getProducto() != null ? d.getProducto().getNombre() : null)
-                .cantidad(d.getCantidad())
-                .precioUnitario(d.getPrecioUnitario())
-                .precioOriginal(d.getPrecioOriginal())
-                .subtotal(d.getSubtotal())
-                .build()).toList()
+                        .id(d.getId())
+                        .productoId(d.getProducto() != null ? d.getProducto().getId() : null)
+                        .productoNombre(d.getProducto() != null ? d.getProducto().getNombre() : null)
+                        .cantidad(d.getCantidad())
+                        .precioUnitario(d.getPrecioUnitario())
+                        .precioOriginal(d.getPrecioOriginal())
+                        .subtotal(d.getSubtotal())
+                        .build()).toList()
                 : List.of();
 
         List<HistorialEstadoResponse> historial = pedido.getHistorial() != null
                 ? pedido.getHistorial().stream().map(h -> HistorialEstadoResponse.builder()
-                .estado(h.getEstado())
-                .creadoEn(h.getCreadoEn())
-                .build()).toList()
+                        .estado(h.getEstado())
+                        .creadoEn(h.getCreadoEn())
+                        .build()).toList()
                 : List.of();
 
         return PedidoResponse.builder()
                 .id(pedido.getId())
                 .numeroPedido(pedido.getNumeroPedido())
                 .idUsuario(pedido.getIdUsuario())
+                .clienteNombre(clienteNombre)
+                .clienteTelefono(clienteTelefono)
+                .clienteCorreo(clienteCorreo)
                 .estado(pedido.getEstado())
                 .tipoEntrega(pedido.getTipoEntrega())
                 .direccionEntrega(pedido.getDireccionEntrega())
