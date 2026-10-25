@@ -35,8 +35,17 @@ public class Pedido {
     @Column(name = "id_pedido")
     private Long id;
 
-    @Column(name = "id_usuario", nullable = false)
+    @Column(name = "id_usuario")
     private Long idUsuario;
+
+    @Column(name = "cliente_nombre", length = 150)
+    private String clienteNombre;
+
+    @Column(name = "cliente_telefono", length = 20)
+    private String clienteTelefono;
+
+    @Column(name = "cliente_correo", length = 150)
+    private String clienteCorreo;
 
     @Column(name = "numero_pedido", length = 30, unique = true, nullable = false)
     private String numeroPedido;
@@ -47,7 +56,7 @@ public class Pedido {
     @Column(name = "tipo_entrega", length = 20, nullable = false)
     private String tipoEntrega;
 
-    @Column(name = "direccion_entrega", length = 255)
+    @Column(name = "direccion_entrega", length = 500)
     private String direccionEntrega;
 
     @Column(name = "subtotal", precision = 10, scale = 2, nullable = false)

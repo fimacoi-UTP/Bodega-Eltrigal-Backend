@@ -18,4 +18,9 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
      */
     List<Venta> findByCreadoEnBetween(LocalDateTime inicio, LocalDateTime fin);
 
+    /**
+     * Verifica si existen ventas asociadas a un usuario específico.
+     */
+    boolean existsByIdUsuario(Long idUsuario);
+
 }

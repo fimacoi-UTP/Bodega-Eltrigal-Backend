@@ -51,6 +51,9 @@ public class Usuario {
     @Column(name = "telefono", length = 15)
     private String telefono;
 
+    @Column(name = "avatar_url", length = 255)
+    private String avatarUrl;
+
     @Column(name = "activo", nullable = false)
     private Boolean activo = true;
 

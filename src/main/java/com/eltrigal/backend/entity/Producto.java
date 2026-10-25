@@ -47,7 +47,7 @@ public class Producto {
     @Column(name = "codigo_barras", length = 13, unique = true)
     private String codigoBarras;
 
-    @Column(name = "descripcion", length = 255)
+    @Column(name = "descripcion", columnDefinition = "TEXT")
     private String descripcion;
 
     @Column(name = "precio", precision = 10, scale = 2, nullable = false)

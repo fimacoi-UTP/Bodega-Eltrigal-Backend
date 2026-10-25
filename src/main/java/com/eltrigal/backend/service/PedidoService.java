@@ -9,6 +9,7 @@ import com.eltrigal.backend.entity.DetallePedido;
 import com.eltrigal.backend.entity.HistorialEstadoPedido;
 import com.eltrigal.backend.entity.MovimientoInventario;
 import com.eltrigal.backend.entity.Producto;
+import com.eltrigal.backend.entity.Promocion;
 import com.eltrigal.backend.entity.Pedido;
 import com.eltrigal.backend.entity.Usuario;
 import com.eltrigal.backend.exception.BadRequestException;
@@ -53,6 +54,7 @@ public class PedidoService {
     private final ProductoRepository productoRepository;
     private final MovimientoInventarioRepository movimientoInventarioRepository;
     private final UsuarioRepository usuarioRepository;
+    private final PromocionService promocionService;
 
     /**
      * Registra un nuevo pedido reservando stock y creando detalle e historial
@@ -106,12 +108,17 @@ public class PedidoService {
         // ==========================================
         Pedido pedido = new Pedido();
         pedido.setIdUsuario(req.getIdUsuario());
+        pedido.setClienteNombre(req.getClienteNombre() != null ? req.getClienteNombre().trim() : null);
+        pedido.setClienteTelefono(req.getClienteTelefono() != null ? req.getClienteTelefono().trim() : null);
+        pedido.setClienteCorreo(req.getClienteCorreo() != null ? req.getClienteCorreo().trim().toLowerCase() : null);
         pedido.setNumeroPedido("PED-" + System.currentTimeMillis());
         pedido.setEstado("PENDIENTE");
         pedido.setTipoEntrega(tipoEntregaNorm);
         pedido.setDireccionEntrega(req.getDireccionEntrega());
         pedido.setMetodoPago(metodoPagoNorm);
         pedido.setReferenciaPago(req.getReferenciaPago());
+
+        List<Promocion> vigentes = promocionService.obtenerVigentes();
 
         BigDecimal subtotal = BigDecimal.ZERO;
         List<DetallePedido> detalles = new ArrayList<>();
@@ -120,7 +127,8 @@ public class PedidoService {
         for (ItemPedidoRequest item : req.getItems()) {
             Producto producto = productosMap.get(item.getProductoId());
 
-            BigDecimal precioUnitario = producto.getPrecio().setScale(2, RoundingMode.HALF_UP);
+            BigDecimal precioOriginal = producto.getPrecio().setScale(2, RoundingMode.HALF_UP);
+            BigDecimal precioUnitario = promocionService.calcularPrecioFinal(producto, vigentes);
             BigDecimal subtotalLinea = precioUnitario.multiply(BigDecimal.valueOf(item.getCantidad())).setScale(2,
                     RoundingMode.HALF_UP);
             subtotal = subtotal.add(subtotalLinea);
@@ -135,7 +143,7 @@ public class PedidoService {
             detalle.setProducto(producto);
             detalle.setCantidad(item.getCantidad());
             detalle.setPrecioUnitario(precioUnitario);
-            detalle.setPrecioOriginal(precioUnitario);
+            detalle.setPrecioOriginal(precioOriginal);
             detalle.setSubtotal(subtotalLinea);
             detalles.add(detalle);
 
@@ -275,25 +283,66 @@ public class PedidoService {
     }
 
     /**
+     * Lista los pedidos del cliente autenticado resuelto por su email.
+     *
+     * @param email Correo electrónico del usuario
+     * @return Lista de PedidoResponse
+     */
+    @Transactional(readOnly = true)
+    public List<PedidoResponse> listarMisPedidos(String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con email: " + email));
+        return pedidoRepository.findByIdUsuarioOrderByIdDesc(usuario.getId())
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    /**
+     * Obtiene el detalle de un pedido por su número de pedido público.
+     *
+     * @param numeroPedido Código único del pedido (ej. PED-...)
+     * @return DTO PedidoResponse
+     */
+    @Transactional(readOnly = true)
+    public PedidoResponse obtenerPorNumeroPedido(String numeroPedido) {
+        Pedido pedido = pedidoRepository.findByNumeroPedido(numeroPedido)
+                .orElseThrow(() -> new ResourceNotFoundException("Pedido no encontrado con número: " + numeroPedido));
+        return toResponse(pedido);
+    }
+
+    /**
      * Mapea una entidad Pedido a su DTO PedidoResponse.
      *
      * @param pedido Entidad JPA
      * @return DTO PedidoResponse
      */
     private PedidoResponse toResponse(Pedido pedido) {
-        String clienteNombre = null;
-        String clienteTelefono = null;
-        String clienteCorreo = null;
+        String clienteNombre = pedido.getClienteNombre();
+        String clienteTelefono = pedido.getClienteTelefono();
+        String clienteCorreo = pedido.getClienteCorreo();
 
         if (pedido.getIdUsuario() != null) {
-            Optional<Usuario> usuarioOpt = usuarioRepository.findById(pedido.getIdUsuario());
-            if (usuarioOpt.isPresent()) {
-                Usuario usuario = usuarioOpt.get();
-                String nombres = usuario.getNombres() != null ? usuario.getNombres() : "";
-                String apellidos = usuario.getApellidos() != null ? usuario.getApellidos() : "";
-                clienteNombre = (nombres + " " + apellidos).trim();
-                clienteTelefono = usuario.getTelefono();
-                clienteCorreo = usuario.getEmail();
+            boolean faltaNombre = clienteNombre == null || clienteNombre.isBlank();
+            boolean faltaTelefono = clienteTelefono == null || clienteTelefono.isBlank();
+            boolean faltaCorreo = clienteCorreo == null || clienteCorreo.isBlank();
+
+            if (faltaNombre || faltaTelefono || faltaCorreo) {
+                Optional<Usuario> usuarioOpt = usuarioRepository.findById(pedido.getIdUsuario());
+                if (usuarioOpt.isPresent()) {
+                    Usuario usuario = usuarioOpt.get();
+                    if (faltaNombre) {
+                        String nombres = usuario.getNombres() != null ? usuario.getNombres() : "";
+                        String apellidos = usuario.getApellidos() != null ? usuario.getApellidos() : "";
+                        clienteNombre = (nombres + " " + apellidos).trim();
+                    }
+                    if (faltaTelefono) {
+                        clienteTelefono = usuario.getTelefono();
+                    }
+                    if (faltaCorreo) {
+                        clienteCorreo = usuario.getEmail();
+                    }
+                }
             }
         }
 

@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -37,6 +38,25 @@ public class PedidoController {
     public ResponseEntity<PedidoResponse> crearPedido(@Valid @RequestBody PedidoRequest req) {
         PedidoResponse response = pedidoService.crearPedido(req);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /**
+     * Lista los pedidos del cliente autenticado.
+     * GET /api/pedidos/mios -> 200 OK
+     */
+    @GetMapping("/mios")
+    public ResponseEntity<List<PedidoResponse>> listarMisPedidos(Authentication authentication) {
+        String email = authentication.getName();
+        return ResponseEntity.ok(pedidoService.listarMisPedidos(email));
+    }
+
+    /**
+     * Consulta el detalle y seguimiento de un pedido por su número de pedido público.
+     * GET /api/pedidos/seguimiento/{numeroPedido} -> 200 OK
+     */
+    @GetMapping("/seguimiento/{numeroPedido}")
+    public ResponseEntity<PedidoResponse> obtenerPorNumeroPedido(@PathVariable String numeroPedido) {
+        return ResponseEntity.ok(pedidoService.obtenerPorNumeroPedido(numeroPedido));
     }
 
     /**
