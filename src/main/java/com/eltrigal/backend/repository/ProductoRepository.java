@@ -2,6 +2,7 @@ package com.eltrigal.backend.repository;
 
 import com.eltrigal.backend.entity.Producto;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -41,5 +42,11 @@ public interface ProductoRepository extends JpaRepository<Producto, Long> {
      * Obtiene todos los productos que no tienen código de barras asignado (NULL).
      */
     List<Producto> findByCodigoBarrasIsNull();
+
+    /**
+     * Cuenta cuántos productos activos tienen existencias menores o iguales al stock mínimo configurado.
+     */
+    @Query("SELECT COUNT(p.id) FROM Producto p WHERE p.activo = true AND p.stock <= p.stockMinimo")
+    long countStockBajo();
 
 }
